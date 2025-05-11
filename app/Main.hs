@@ -9,7 +9,7 @@ import Data.Text.IO (getLine, hGetContents)
 import Lexical
 import System.Environment (getArgs)
 import System.Exit
-import System.IO (IOMode (ReadMode), hPutStrLn, stderr, withFile)
+import System.IO (IOMode (ReadMode), hFlush, hPutStrLn, stderr, stdout, withFile)
 import Prelude hiding (getLine)
 
 main :: IO ()
@@ -19,7 +19,7 @@ main = do
     0 -> runPrompt >> exitSuccess
     1 -> runFile (args !! 1)
     _ -> do
-      hPutStrLn stderr "usage: jlox [script]"
+      hPutStrLn stderr "usage: hlox [script]"
       exitFailure
 
 -- | Exit point. Open a repl in stdin and stdout. C-c and C-d are also capable
@@ -27,6 +27,7 @@ main = do
 runPrompt :: IO ()
 runPrompt = forever $ do
   putStr "> "
+  hFlush stdout
   line <- getLine
   when (line == ":q") exitSuccess
   run line $> ()
@@ -44,4 +45,4 @@ runFile fileName = withFile fileName ReadMode $ \h -> do
 run :: Text -> IO Bool
 run source = case lexicalErrors source of
   [] -> putStrLn "All tokens are well-formed." $> True
-  errors -> print errors $> False
+  errors -> putStrLn (unlines errors) $> False

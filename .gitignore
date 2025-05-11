@@ -1,0 +1,7 @@
+# ignore build artifacts
+dist-newstyle
+dist-newstyle/*
+# ignore unsaved emacs files
+\#*
+.\#*
+*~
