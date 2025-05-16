@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name: hlox-v2
+name: hlox
 version: 0.1.0.0
 -- synopsis:
 -- description:
@@ -16,24 +16,25 @@ common warnings
   ghc-options: -Wall
   default-language: GHC2021
 
-executable hlox-v2
+executable hlox
   import: warnings
   main-is: Main.hs
   other-modules:
     Ast
     Lexical
+    Parser
 
   -- other-extensions:
   build-depends:
-    base ^>=4.18.3.0,
+    base,
     containers,
     megaparsec,
     mtl,
-    text >=2.1.2,
+    -- text >=2.1.2,
 
   hs-source-dirs: app
 
-test-suite hlox-v2-test
+test-suite hlox-test
   import: warnings
   default-language: Haskell2010
   -- other-modules:
