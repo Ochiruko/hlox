@@ -2,7 +2,7 @@
 module Parser where
 
 import Data.Void (Void)
-import Data.Maybe (fromMaybe, fromJust)
+import Data.Maybe (fromMaybe)
 import Text.Megaparsec ((<?>), (<|>))
 import qualified Text.Megaparsec as M
 import qualified Text.Megaparsec.Char.Lexer as L
@@ -11,14 +11,13 @@ import qualified Text.Megaparsec.Error as E
 
 import qualified Ast as Ast
 import qualified Control.Arrow as A
-import Data.Functor (void, ($>))
+import Data.Functor (void)
 
 type Parser = M.Parsec Void String
 
 -- | parse (context|filename) sourceCode
 parse :: String -> String -> Either String Ast.Expr
-parse context = A.right fromJust
-              . A.left E.errorBundlePretty
+parse context = A.left E.errorBundlePretty
               . M.runParser (expr <* M.eof) context
 
 -- | Returns the contents of the parsed string. Also consumes any following whitespace.
@@ -105,7 +104,7 @@ precFixity = [ (0, FixLeft)
 -- | parses any valid function argument. Note that this language excludes tuples
 -- for some ridiculous reason. I don't believe this ever fails.
 argumentExpr :: Parser Ast.Expr
-argumentExpr = recoverToWith toNextExpr fallbackExpr (exprPrec 1)
+argumentExpr = recoverToWith nextExpr fallbackExpr (exprPrec 1)
 
 -- | Parses any valid lox expression. Refer to the formal grammar for details.
 -- Note that this should always fail further down.
@@ -130,19 +129,19 @@ binaryOpPrec prec
       space
       pure op
 
-toNextExpr :: Parser ()
-toNextExpr = M.choice
+nextExpr :: Parser ()
+nextExpr = M.choice
   [ void (C.char ';')
   , M.lookAhead keyword ]
 
-toNextBinaryOp :: Parser ()
-toNextBinaryOp =
+nextBinaryOp :: Parser ()
+nextBinaryOp =
   let anyBinaryOp = "?" : ":" : map fst (concat binaryOpsPrecTable)
-  in (void . M.lookAhead . M.choice . map C.string $ anyBinaryOp) <|> toNextExpr
+  in (void . M.lookAhead . M.choice . map C.string $ anyBinaryOp) <|> nextExpr
 
 -- An arbitrary fallback/dud for when the parse is going to fail anyways.
 fallbackExpr :: Ast.Expr
-fallbackExpr = Boolean False
+fallbackExpr = Ast.Boolean False
 
 -- | Parses into lists by precedence. Associates left: (a + b) + c
 --
@@ -157,10 +156,10 @@ exprPrec prec
   | prec == 1 = ternary
   | otherwise = do
       -- The try is implicit
-      headSubExpr <- recoverToWith toNextBinaryOp (Ast.Boolean False) $ exprPrec (prec + 1)
+      headSubExpr <- recoverToWith nextBinaryOp (Ast.Boolean False) $ exprPrec (prec + 1)
       opsAndTailSubExprs <- M.many $ do
         op <- binaryOpPrec prec
-        mSubExpr <- recoverToWith toNextBinaryOp fallbackExpr $ exprPrec (prec - 1)
+        mSubExpr <- recoverToWith nextBinaryOp fallbackExpr $ exprPrec (prec - 1)
         pure (op, mSubExpr)
       case lookup prec precFixity of
         Just FixLeft ->
@@ -175,38 +174,18 @@ exprPrec prec
 
 -- | If there is no ternary expression, this just returns the proposition.
 -- Has very complete error handling.
---
--- One way to refactor this might be to have '?' emit an intermediate newtype
--- over expr, and then do a miniature type check on that newtype at ':'.
 ternary :: Parser Ast.Expr
 ternary = do
-  mProp <- recoverToWith toNextBinaryOp fallbackExpr $ exprPrec 2   
-  eitherRoutes <- do
-    eitherMTrueRoute <- do
-      -- this line forces the parser to either fail or commit
-      eitherError <- M.observing $ C.char '?' *> space
-      trueExpr <- recoverToWith toNextBinaryOp Nothing (exprPrec 2)
-      pure $ eitherError $> trueExpr
-    mFalseRoute <- M.optional $ do
-      C.char ':' *> space
-      case eitherMTrueRoute of
-        -- This should really be given a more explanatory, labeled error message.
-        Left err -> M.registerParseError err
-        _ -> pure ()
-      recoverToWith toNextBinaryOp Nothing $ exprPrec 1
-    case (eitherMTrueRoute, mFalseRoute) of
-      (Right (Just trueRoute), Just (Just falseRoute)) ->
-        pure $ Right (trueRoute, falseRoute)
-      (Left _, Nothing) -> pure $ Left True -- no input was consumed, valid result.
-      _ -> pure $ Left False -- some input was consumed, invalid result.
-  pure $ do
-    prop <- mProp
-    case eitherRoutes of
-      Right (trueRoute, falseRoute) -> Just $ Ast.Ternary prop trueRoute falseRoute
-      Left True -> Just prop
-      Left False -> Nothing
-
-    
+  prop <- recoverToWith nextBinaryOp fallbackExpr (exprPrec 2)
+  mRoutes <- M.optional $ do
+    _ <- C.char '?'
+    trueRoute <- recoverToWith nextBinaryOp fallbackExpr (exprPrec 2)
+    _ <- C.char ':'
+    falseRoute <- recoverToWith nextBinaryOp fallbackExpr (exprPrec 1)
+    pure (trueRoute, falseRoute)
+  case mRoutes of
+    Nothing -> pure $ prop
+    Just (t, f) -> pure $ Ast.Ternary prop t f
 
 unary :: Parser Ast.Expr
 unary = do
