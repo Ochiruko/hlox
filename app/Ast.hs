@@ -33,17 +33,31 @@ data BinaryOp = Comma
               | Raise
               deriving (Show, Eq)
 
-data Expr = Number Double
-          | String String
-          | Identifier String
-          | Ternary Expr Expr Expr
-          | Boolean Bool
-          | Not Expr
-          | Negative Expr
-          | Binary BinaryOp Expr Expr
-          | Parens Expr
-          | FunctionCall String [Expr]
-          deriving (Show, Eq)
+type Line = Int
+type Offset = Int
+
+-- | Inclusive in both the initialChar and finalChar
+data Lexeme = Segment
+  { initial :: (Line, Offset)
+  , final :: (Line, Offset)
+  } deriving (Show, Eq)
+
+data Expr = Decorated
+  { lexemes :: [Lexeme] -- ^ Only primitive lexemes should belong to this list.
+  , expr :: UndecoratedExpr
+  } deriving (Show, Eq)
+
+data UndecoratedExpr where
+  Number :: Double -> UndecoratedExpr
+  String :: String -> UndecoratedExpr
+  Identifier :: String -> UndecoratedExpr
+  Ternary :: Expr -> Expr -> Expr -> UndecoratedExpr
+  Boolean :: Bool -> UndecoratedExpr
+  Not :: Expr -> UndecoratedExpr
+  Negative :: Expr -> UndecoratedExpr
+  Binary :: BinaryOp -> Expr -> Expr -> UndecoratedExpr
+  FunctionCall :: String -> [Expr] -> UndecoratedExpr
+  deriving (Show, Eq)
 
 prettyOp :: BinaryOp -> String
 prettyOp Equal = "=="
@@ -63,13 +77,13 @@ parenthesize :: [String] -> String
 parenthesize xs = "(" <> unwords xs <> ")"
 
 prettyPrint :: Expr -> String
+prettyPrint e = case expr e of
 prettyPrint (Number n) = show n
 prettyPrint (String s) = show s
 prettyPrint (Boolean b) = if b then "true" else "false"
 prettyPrint (Not e) = parenthesize [prettyPrint e]
 prettyPrint (Negative e) = parenthesize ["-", prettyPrint e]
 prettyPrint (Binary op e1 e2) = parenthesize [prettyOp op, prettyPrint e1, prettyPrint e2]
-prettyPrint (Parens e) = parenthesize ["parens", prettyPrint e]
 prettyPrint (Identifier name) = parenthesize ["identifier", name]
 prettyPrint (Ternary cond true false) = parenthesize $ map prettyPrint [cond, true, false]
 prettyPrint (FunctionCall f args) = parenthesize $ "function-call" : f : map prettyPrint args
